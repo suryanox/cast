@@ -18,13 +18,43 @@ def cli():
 
 
 @cli.command()
+def help():
+    """Show cast commands and usage."""
+    console.print()
+    console.print("[bold cyan]cast[/bold cyan]  [dim]record. replay. rewind. time-travel debugger for AI agents.[/dim]")
+    console.print()
+    console.print("[bold]usage[/bold]")
+    console.print("  wrap your agent with [cyan]@cast.record[/cyan] to start recording runs.")
+    console.print()
+    console.print("[bold]commands[/bold]")
+    console.print()
+    console.print(f"  [cyan]cast list[/cyan]              list all recorded runs")
+    console.print(f"  [cyan]cast list --limit 5[/cyan]    list last 5 runs")
+    console.print(f"  [cyan]cast show <run_id>[/cyan]     inspect every step of a run")
+    console.print(f"  [cyan]cast last[/cyan]              inspect the most recent run")
+    console.print()
+    console.print("[bold]example[/bold]")
+    console.print()
+    console.print("  [dim]# wrap your agent[/dim]")
+    console.print("  [cyan]@cast.record[/cyan]")
+    console.print("  [cyan]def run_agent(user_input):[/cyan]")
+    console.print("  [cyan]    ...[/cyan]")
+    console.print()
+    console.print("  [dim]# then inspect[/dim]")
+    console.print("  [cyan]$ cast list[/cyan]")
+    console.print("  [cyan]$ cast last[/cyan]")
+    console.print("  [cyan]$ cast show a3f9c1e8[/cyan]")
+    console.print()
+
+
+@cli.command()
 @click.option("--limit", default=20, help="Number of runs to show")
 def list(limit: int):
     """List all recorded runs."""
     runs = list_runs(limit)
 
     if not runs:
-        console.print("[dim]no runs recorded yet. wrap your agent with @record to start.[/dim]")
+        console.print("[dim]no runs yet. wrap your agent with @cast.record to start.[/dim]")
         return
 
     table = Table(box=box.SIMPLE, show_header=True, header_style="bold dim")
@@ -61,16 +91,33 @@ def list(limit: int):
 
 @cli.command()
 @click.argument("run_id")
-def inspect(run_id: str):
+def show(run_id: str):
     """Inspect every step of a run."""
     run = load_run(run_id)
     if not run:
         console.print(f"[red]run {run_id} not found[/red]")
         return
+    _print_run(run)
 
+
+@cli.command()
+def last():
+    """Inspect the most recent run."""
+    runs = list_runs(limit=1)
+    if not runs:
+        console.print("[dim]no runs yet.[/dim]")
+        return
+    _print_run(runs[0])
+
+
+def _print_run(run):
     console.print(f"\n[bold cyan]run {run.id}[/bold cyan]  "
                   f"[dim]{run.name} · {run.started_at.strftime('%Y-%m-%d %H:%M:%S')} · "
                   f"{run.total_tokens} tokens · {run.duration_ms}ms[/dim]\n")
+
+    if not run.steps:
+        console.print("[dim]no steps recorded.[/dim]")
+        return
 
     for step in run.steps:
         first_message = step.prompt[0] if step.prompt else {}
@@ -81,7 +128,7 @@ def inspect(run_id: str):
 
         console.print(Panel(
             f"[dim]prompt:[/dim] {prompt_preview}\n\n"
-            f"[dim]response:[/dim] {step.response[:300]}",
+            f"[dim]response:[/dim] {step.response}",
             border_style="dim",
             padding=(0, 1),
         ))
@@ -92,50 +139,3 @@ def inspect(run_id: str):
                                f"[dim]{tc.arguments}[/dim]")
 
         console.print()
-
-
-@cli.command()
-@click.argument("run_id_a")
-@click.argument("run_id_b")
-def diff(run_id_a: str, run_id_b: str):
-    """Diff two runs step by step."""
-    run_a = load_run(run_id_a)
-    run_b = load_run(run_id_b)
-
-    if not run_a:
-        console.print(f"[red]run {run_id_a} not found[/red]")
-        return
-    if not run_b:
-        console.print(f"[red]run {run_id_b} not found[/red]")
-        return
-
-    console.print(f"\n[bold]diff[/bold]  "
-                  f"[cyan]{run_id_a}[/cyan] vs [cyan]{run_id_b}[/cyan]\n")
-
-    max_steps = max(len(run_a.steps), len(run_b.steps))
-    diverged = False
-
-    for i in range(max_steps):
-        step_a = run_a.steps[i] if i < len(run_a.steps) else None
-        step_b = run_b.steps[i] if i < len(run_b.steps) else None
-
-        if not step_a:
-            console.print(f"  step {i}  [yellow]+ only in {run_id_b}[/yellow]  {step_b.response[:80]}")
-            continue
-        if not step_b:
-            console.print(f"  step {i}  [yellow]- only in {run_id_a}[/yellow]  {step_a.response[:80]}")
-            continue
-
-        if step_a.response == step_b.response and step_a.model == step_b.model:
-            console.print(f"  step {i}  [green]identical[/green]")
-        else:
-            diverged = True
-            console.print(f"  step {i}  [red]✗ diverged[/red]")
-            console.print(f"    [dim]{run_id_a}:[/dim] {step_a.response[:100]}")
-            console.print(f"    [dim]{run_id_b}:[/dim] {step_b.response[:100]}")
-
-    console.print()
-    if not diverged:
-        console.print("[green]runs are identical[/green]")
-    else:
-        console.print("[dim]tip: use [bold]cast fork[/bold] to explore a diverged branch[/dim]")

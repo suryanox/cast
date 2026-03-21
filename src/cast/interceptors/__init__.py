@@ -1,14 +1,12 @@
 from .base import BaseInterceptor
 from .openai import (
     OpenAICompletionsInterceptor,
-    OpenAIResponsesInterceptor,
-    OpenAIAgentsInterceptor,
+    OpenAIResponsesInterceptor
 )
 
 _interceptors: list[BaseInterceptor] = [
     OpenAICompletionsInterceptor(),
-    OpenAIResponsesInterceptor(),
-    OpenAIAgentsInterceptor(),
+    OpenAIResponsesInterceptor()
 ]
 
 
