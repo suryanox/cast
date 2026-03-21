@@ -142,6 +142,15 @@ def _row_to_run(row: sqlite3.Row, steps: list[Step]) -> Run:
         forked_at_step=row["forked_at_step"],
     )
 
+def clear_runs() -> int:
+    conn = _connect()
+    count = conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
+    conn.execute("DELETE FROM steps")
+    conn.execute("DELETE FROM runs")
+    conn.commit()
+    conn.close()
+    return count
+
 def _serialize_messages(messages: list) -> list:
     result = []
     for m in messages:

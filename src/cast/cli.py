@@ -3,139 +3,202 @@ import click
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
+from rich.rule import Rule
 from rich import box
 
-from .store import list_runs, load_run
+from .store import list_runs, load_run, clear_runs
 from .models import RunStatus
 
 console = Console()
 
+STATUS_STYLE = {
+    RunStatus.DONE:    ("✓ done",    "green"),
+    RunStatus.FAILED:  ("✗ failed",  "red"),
+    RunStatus.RUNNING: ("⟳ running", "yellow"),
+}
+
 
 @click.group()
 def cli():
-    """cast — record. replay. rewind. time-travel debugger for AI agents."""
     pass
 
 
 @cli.command()
 def help():
-    """Show cast commands and usage."""
     console.print()
-    console.print("[bold cyan]cast[/bold cyan]  [dim]record. replay. rewind. time-travel debugger for AI agents.[/dim]")
+    console.print(Rule("[bold cyan]cast[/bold cyan]  [dim]record. replay. rewind.[/dim]"))
     console.print()
-    console.print("[bold]usage[/bold]")
-    console.print("  wrap your agent with [cyan]@cast.record[/cyan] to start recording runs.")
+
+    console.print("  [bold white]commands[/bold white]")
     console.print()
-    console.print("[bold]commands[/bold]")
+    commands = [
+        ("cast list",             "",              "list all recorded runs"),
+        ("cast list",             "--limit 5",     "show last 5 runs"),
+        ("cast show",             "<run_id>",      "inspect every step of a run"),
+        ("cast last",             "",              "inspect the most recent run"),
+        ("cast clear",            "",              "delete all recorded runs"),
+    ]
+    for cmd, arg, desc in commands:
+        console.print(f"  [cyan]{cmd}[/cyan] [yellow]{arg}[/yellow]"
+                      f"{'':>{28 - len(cmd) - len(arg)}}[dim]{desc}[/dim]")
+
     console.print()
-    console.print(f"  [cyan]cast list[/cyan]              list all recorded runs")
-    console.print(f"  [cyan]cast list --limit 5[/cyan]    list last 5 runs")
-    console.print(f"  [cyan]cast show <run_id>[/cyan]     inspect every step of a run")
-    console.print(f"  [cyan]cast last[/cyan]              inspect the most recent run")
+    console.print("  [bold white]quickstart[/bold white]")
     console.print()
-    console.print("[bold]example[/bold]")
+    console.print("  [dim]1. wrap your agent[/dim]")
     console.print()
-    console.print("  [dim]# wrap your agent[/dim]")
-    console.print("  [cyan]@cast.record[/cyan]")
-    console.print("  [cyan]def run_agent(user_input):[/cyan]")
-    console.print("  [cyan]    ...[/cyan]")
+    console.print("  [bright_black]  import[/bright_black] [cyan]cast[/cyan]")
     console.print()
-    console.print("  [dim]# then inspect[/dim]")
-    console.print("  [cyan]$ cast list[/cyan]")
-    console.print("  [cyan]$ cast last[/cyan]")
-    console.print("  [cyan]$ cast show a3f9c1e8[/cyan]")
+    console.print("  [cyan]  @cast.record[/cyan]")
+    console.print("  [white]  def[/white] [cyan]run_agent[/cyan][white](user_input):[/white]")
+    console.print("  [white]      ...[/white]")
+    console.print()
+    console.print("  [dim]2. run it — cast records everything automatically[/dim]")
+    console.print()
+    console.print("  [dim]3. inspect[/dim]")
+    console.print()
+    console.print("  [bright_black]  $[/bright_black] [cyan]cast list[/cyan]")
+    console.print("  [bright_black]  $[/bright_black] [cyan]cast last[/cyan]")
+    console.print("  [bright_black]  $[/bright_black] [cyan]cast show a3f9c1e8[/cyan]")
+    console.print()
+    console.print(Rule(style="dim"))
     console.print()
 
 
 @cli.command()
 @click.option("--limit", default=20, help="Number of runs to show")
 def list(limit: int):
-    """List all recorded runs."""
     runs = list_runs(limit)
 
     if not runs:
-        console.print("[dim]no runs yet. wrap your agent with @cast.record to start.[/dim]")
+        console.print()
+        console.print("  [dim]no runs yet.[/dim]  wrap your agent with [cyan]@cast.record[/cyan] to start.")
+        console.print()
         return
 
-    table = Table(box=box.SIMPLE, show_header=True, header_style="bold dim")
-    table.add_column("run id", style="cyan", width=10)
-    table.add_column("name", width=20)
-    table.add_column("started", width=20)
-    table.add_column("steps", justify="right", width=6)
-    table.add_column("tokens", justify="right", width=8)
+    console.print()
+    table = Table(
+        box=box.SIMPLE,
+        show_header=True,
+        header_style="dim",
+        show_edge=False,
+        pad_edge=True,
+    )
+    table.add_column("run id",   style="cyan",    width=10)
+    table.add_column("name",                      width=22)
+    table.add_column("started",  style="dim",     width=20)
+    table.add_column("steps",    justify="right", width=6)
+    table.add_column("tokens",   justify="right", width=8)
     table.add_column("duration", justify="right", width=10)
-    table.add_column("status", width=10)
+    table.add_column("status",                    width=12)
 
     for run in runs:
-        status_style = {
-            RunStatus.DONE: "[green]✓ done[/green]",
-            RunStatus.FAILED: "[red]✗ failed[/red]",
-            RunStatus.RUNNING: "[yellow]⟳ running[/yellow]",
-        }[run.status]
-
+        label, color = STATUS_STYLE[run.status]
         duration = f"{run.duration_ms}ms" if run.duration_ms else "—"
-        forked = f" [dim](fork of {run.forked_from})[/dim]" if run.forked_from else ""
+        name = run.name
+        if run.forked_from:
+            name += f" [dim](⑂ {run.forked_from})[/dim]"
 
         table.add_row(
             run.id,
-            run.name + forked,
+            name,
             run.started_at.strftime("%Y-%m-%d %H:%M:%S"),
-            str(len(run.steps)),
-            str(run.total_tokens),
-            duration,
-            status_style,
+            f"[white]{len(run.steps)}[/white]",
+            f"[white]{run.total_tokens}[/white]",
+            f"[dim]{duration}[/dim]",
+            f"[{color}]{label}[/{color}]",
         )
 
     console.print(table)
+    console.print(f"  [dim]{len(runs)} run(s) · "
+                  f"cast show <run_id> to inspect[/dim]")
+    console.print()
 
 
 @cli.command()
 @click.argument("run_id")
 def show(run_id: str):
-    """Inspect every step of a run."""
     run = load_run(run_id)
     if not run:
-        console.print(f"[red]run {run_id} not found[/red]")
+        console.print(f"\n  [red]✗[/red] run [cyan]{run_id}[/cyan] not found\n")
         return
     _print_run(run)
 
 
 @cli.command()
 def last():
-    """Inspect the most recent run."""
     runs = list_runs(limit=1)
     if not runs:
-        console.print("[dim]no runs yet.[/dim]")
+        console.print("\n  [dim]no runs yet.[/dim]\n")
         return
     _print_run(runs[0])
 
 
+@cli.command()
+@click.confirmation_option(prompt="  ⚠ delete all recorded runs. are you sure?")
+def clear():
+    count = clear_runs()
+    console.print(f"\n  [dim]deleted [white]{count}[/white] run(s). fresh start.[/dim]\n")
+
+
 def _print_run(run):
-    console.print(f"\n[bold cyan]run {run.id}[/bold cyan]  "
-                  f"[dim]{run.name} · {run.started_at.strftime('%Y-%m-%d %H:%M:%S')} · "
-                  f"{run.total_tokens} tokens · {run.duration_ms}ms[/dim]\n")
+    label, color = STATUS_STYLE[run.status]
+
+    console.print()
+    console.print(Rule(
+        f"[bold cyan]{run.id}[/bold cyan]  "
+        f"[dim]{run.name}[/dim]  "
+        f"[{color}]{label}[/{color}]"
+    ))
+    console.print(
+        f"  [dim]started[/dim] {run.started_at.strftime('%Y-%m-%d %H:%M:%S')}  "
+        f"[dim]·[/dim]  [white]{run.total_tokens}[/white] [dim]tokens[/dim]  "
+        f"[dim]·[/dim]  [white]{run.duration_ms}ms[/white]  "
+        + (f"[dim]·[/dim]  [dim]⑂ forked from [cyan]{run.forked_from}[/cyan] at step {run.forked_at_step}[/dim]"
+           if run.forked_from else "")
+    )
+    console.print()
 
     if not run.steps:
-        console.print("[dim]no steps recorded.[/dim]")
+        console.print("  [dim]no steps recorded.[/dim]")
+        console.print()
         return
 
     for step in run.steps:
+        console.print(
+            f"  [bold white]step {step.index}[/bold white]  "
+            f"[dim]{step.model}[/dim]  "
+            f"[cyan]{step.total_tokens} tokens[/cyan]  "
+            f"[dim]{step.latency_ms}ms[/dim]"
+        )
+        console.print()
+
         first_message = step.prompt[0] if step.prompt else {}
-        prompt_preview = str(first_message.get("content", ""))[:120]
-
-        console.print(f"[bold]step {step.index}[/bold]  "
-                      f"[dim]{step.model} · {step.total_tokens} tokens · {step.latency_ms}ms[/dim]")
-
+        prompt_text = str(first_message.get("content", ""))
         console.print(Panel(
-            f"[dim]prompt:[/dim] {prompt_preview}\n\n"
-            f"[dim]response:[/dim] {step.response}",
-            border_style="dim",
-            padding=(0, 1),
+            f"[dim]{prompt_text}[/dim]",
+            title="[dim]prompt[/dim]",
+            title_align="left",
+            border_style="bright_black",
+            padding=(0, 2),
         ))
 
         if step.tool_calls:
             for tc in step.tool_calls:
-                console.print(f"  [yellow]⚙ tool_call[/yellow] [bold]{tc.name}[/bold]  "
-                               f"[dim]{tc.arguments}[/dim]")
+                console.print(
+                    f"  [yellow]⚙[/yellow]  [bold yellow]{tc.name}[/bold yellow]  "
+                    f"[dim]{tc.arguments}[/dim]"
+                )
+            console.print()
 
+        console.print(Panel(
+            f"[white]{step.response}[/white]",
+            title="[dim]response[/dim]",
+            title_align="left",
+            border_style="cyan",
+            padding=(0, 2),
+        ))
         console.print()
+
+    console.print(Rule(style="dim"))
+    console.print()
