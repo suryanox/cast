@@ -32,6 +32,11 @@ class OpenAICompletionsInterceptor(BaseInterceptor):
                     if kwargs.get("stream", False):
                         return original_create(**kwargs)
 
+                    import inspect
+                    for frame in inspect.stack()[1:8]:
+                        if "litellm" in (frame.filename or ""):
+                            return original_create(**kwargs)
+
                     messages = kwargs.get("messages", [])
                     model = kwargs.get("model", "unknown")
 

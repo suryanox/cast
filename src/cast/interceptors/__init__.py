@@ -1,12 +1,14 @@
 from .base import BaseInterceptor
 from .openai import (
     OpenAICompletionsInterceptor,
-    OpenAIResponsesInterceptor
+    OpenAIResponsesInterceptor,
 )
+from .litellm import LiteLLMCompletionInterceptor
 
 _interceptors: list[BaseInterceptor] = [
     OpenAICompletionsInterceptor(),
-    OpenAIResponsesInterceptor()
+    OpenAIResponsesInterceptor(),
+    LiteLLMCompletionInterceptor(),
 ]
 
 
